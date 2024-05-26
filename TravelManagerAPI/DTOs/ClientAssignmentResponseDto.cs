@@ -1,6 +1,6 @@
 ﻿namespace TravelManagerAPI.DTOs;
 
-public class AssignClientDto
+public class ClientAssignmentResponseDto
 {
     public string FirstName { get; set; }
     public string LastName { get; set; }

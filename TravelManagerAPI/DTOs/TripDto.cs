@@ -2,8 +2,11 @@
 
 public class TripDto
 {
-    public int IdTrip { get; set; }
     public string Name { get; set; }
-    public DateTime StartDate { get; set; }
-    public DateTime EndDate { get; set; }
+    public string Description { get; set; }
+    public DateTime DateFrom { get; set; }
+    public DateTime DateTo { get; set; }
+    public int MaxPeople { get; set; }
+    public List<CountryDto> Countries { get; set; }
+    public List<ClientDto> Clients { get; set; }
 }

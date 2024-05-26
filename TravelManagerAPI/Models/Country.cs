@@ -1,0 +1,11 @@
+﻿namespace TravelManagerAPI.Models;
+
+using System.Collections.Generic;
+
+public class Country
+{
+    public int IdCountry { get; set; }
+    public string Name { get; set; }
+
+    public ICollection<CountryTrip> CountryTrips { get; set; } = new List<CountryTrip>();
+}

@@ -1,35 +1,39 @@
-﻿using TravelManagerAPI.DTOs;
+﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using TravelManagerAPI.DTOs;
 using TravelManagerAPI.Models;
 
 namespace TravelManagerAPI.Controllers;
 
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using System.Linq;
-using System.Threading.Tasks;
-
 [Route("api/[controller]")]
 [ApiController]
-public class TripsController : ControllerBase
+public class TripsController(TripDbContext context) : ControllerBase
 {
-    private readonly TripDbContext _context;
-
-    public TripsController(TripDbContext context)
-    {
-        _context = context;
-    }
-
     [HttpGet]
     public async Task<ActionResult<IEnumerable<TripDto>>> GetTrips()
     {
-        var trips = await _context.Trips
-            .OrderByDescending(t => t.StartDate)
+        var trips = await context.Trips
+            .Include(t => t.CountryTrips)
+            .ThenInclude(ct => ct.Country)
+            .Include(t => t.ClientTrips)
+            .ThenInclude(ct => ct.Client)
+            .OrderByDescending(t => t.DateFrom)
             .Select(t => new TripDto
             {
-                IdTrip = t.IdTrip,
                 Name = t.Name,
-                StartDate = t.StartDate,
-                EndDate = t.EndDate
+                Description = t.Description,
+                DateFrom = t.DateFrom,
+                DateTo = t.DateTo,
+                MaxPeople = t.MaxPeople,
+                Countries = t.CountryTrips.Select(ct => new CountryDto
+                {
+                    Name = ct.Country.Name
+                }).ToList(),
+                Clients = t.ClientTrips.Select(ct => new ClientDto
+                {
+                    FirstName = ct.Client.FirstName,
+                    LastName = ct.Client.LastName
+                }).ToList()
             }).ToListAsync();
 
         return Ok(trips);
@@ -38,7 +42,7 @@ public class TripsController : ControllerBase
     [HttpDelete("api/clients/{idClient}")]
     public async Task<IActionResult> DeleteClient(int idClient)
     {
-        var client = await _context.Clients.Include(c => c.ClientTrips).FirstOrDefaultAsync(c => c.IdClient == idClient);
+        var client = await context.Clients.Include(c => c.ClientTrips).FirstOrDefaultAsync(c => c.IdClient == idClient);
         if (client == null)
         {
             return NotFound();
@@ -49,46 +53,65 @@ public class TripsController : ControllerBase
             return BadRequest("Client has assigned trips.");
         }
 
-        _context.Clients.Remove(client);
-        await _context.SaveChangesAsync();
+        context.Clients.Remove(client);
+        await context.SaveChangesAsync();
 
         return NoContent();
     }
 
-    [HttpPost("api/trips/{idTrip}/clients")]
-    public async Task<IActionResult> AssignClientToTrip(int idTrip, AssignClientDto dto)
+    [HttpPost("api/trips/clients")]
+    public async Task<IActionResult> AssignClientToTrip([FromBody] AssignClientDto dto)
     {
-        var trip = await _context.Trips.FindAsync(idTrip);
-        if (trip == null)
+        var trip = await context.Trips.FindAsync(dto.IdTrip);
+        if (trip == null || trip.Name != dto.TripName)
         {
-            return NotFound("Trip not found.");
+            return NotFound("Trip not found or name does not match.");
         }
-
-        var client = await _context.Clients.FirstOrDefaultAsync(c => c.Pesel == dto.Pesel);
+        
+        var client = await context.Clients.FirstOrDefaultAsync(c => c.Pesel == dto.Pesel);
         if (client == null)
         {
-            client = new Client { Pesel = dto.Pesel, FirstName = dto.FirstName, LastName = dto.LastName };
-            _context.Clients.Add(client);
-            await _context.SaveChangesAsync();
+            client = new Client
+            {
+                FirstName = dto.FirstName,
+                LastName = dto.LastName,
+                Email = dto.Email,
+                Telephone = dto.Telephone,
+                Pesel = dto.Pesel
+            };
+            context.Clients.Add(client);
+            await context.SaveChangesAsync();
         }
-
-        var clientTrip = await _context.ClientTrips.FirstOrDefaultAsync(ct => ct.IdClient == client.IdClient && ct.IdTrip == idTrip);
+        
+        var clientTrip = await context.ClientTrips.FirstOrDefaultAsync(ct => ct.IdClient == client.IdClient && ct.IdTrip == dto.IdTrip);
         if (clientTrip != null)
         {
             return BadRequest("Client is already assigned to this trip.");
         }
-
+        
         clientTrip = new ClientTrip
         {
             IdClient = client.IdClient,
-            IdTrip = idTrip,
+            IdTrip = dto.IdTrip,
             PaymentDate = dto.PaymentDate,
             RegisteredAt = DateTime.Now
         };
 
-        _context.ClientTrips.Add(clientTrip);
-        await _context.SaveChangesAsync();
+        context.ClientTrips.Add(clientTrip);
+        await context.SaveChangesAsync();
+        
+        var responseDto = new ClientAssignmentResponseDto
+        {
+            FirstName = client.FirstName,
+            LastName = client.LastName,
+            Email = client.Email,
+            Telephone = client.Telephone,
+            Pesel = client.Pesel,
+            IdTrip = dto.IdTrip,
+            TripName = trip.Name,
+            PaymentDate = dto.PaymentDate
+        };
 
-        return NoContent();
+        return Ok(responseDto);
     }
 }
